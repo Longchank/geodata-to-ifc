@@ -1,0 +1,25 @@
+# Python virtual environment
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Project-specific: raw input data (source GML/CityJSON/IFC samples) and
+# archived/superseded pipeline code - never tracked, per user's choice.
+raw/
+OLD/
+
+# Generated IFC output
+output/
+
+# Excel lock files
+~$*.xlsx
+
+# Windows batch launchers (machine/user-specific venv paths)
+*.bat
+
+# Internal working notes and decision history - not for a public repo.
+# Holds open/unfixed security findings, review history and process notes; the
+# public-facing documentation lives in the README.md files instead.
+CLAUDE.md

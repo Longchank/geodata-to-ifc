@@ -1,0 +1,99 @@
+{
+  "_comment": "Shared schema for the Detaljplan2IFC pipeline (lm_detaljplan_to_cityjson.py + lm_cityjson_to_ifc.py). Edit this file to change CityJSON/IFC class mapping, Pset property names/types, or per-type color/alpha - no code changes needed. See README for full documentation.",
+
+  "feature_types": {
+    "detaljplan": {
+      "cityjson_type": "LandUse",
+      "ifc_class": "IfcSite",
+      "color": { "rgb": [0.6, 0.6, 0.6], "alpha": 0.0 }
+    },
+    "användningsbestämmelse": {
+      "cityjson_type": "LandUse",
+      "ifc_class": "IfcGeographicElement",
+      "ifc_predefined_type": "USERDEFINED",
+      "ifc_object_type": "LandUse",
+      "color": { "rgb": [0.3, 0.7, 0.3], "alpha": 0.5 }
+    },
+    "administrativ bestämmelse": {
+      "cityjson_type": "GenericCityObject",
+      "ifc_class": "IfcCivilElement",
+      "color": { "rgb": [0.9, 0.6, 0.1], "alpha": 0.5 }
+    },
+    "egenskapsbestämmelse": {
+      "cityjson_type": "GenericCityObject",
+      "ifc_class": "IfcCivilElement",
+      "color": { "rgb": [0.2, 0.4, 0.9], "alpha": 0.5 }
+    }
+  },
+
+  "default": {
+    "cityjson_type": "GenericCityObject",
+    "ifc_class": "IfcCivilElement",
+    "color": { "rgb": [0.8, 0.2, 0.2], "alpha": 0.5 }
+  },
+
+  "attributes": {
+    "simple_keys": [
+      "objektidentitet", "objektversion", "versionGiltigFran", "versionGiltigTill",
+      "feature:typ", "detaljplan",
+      "kommun", "beteckning", "namn", "syfte", "status", "datumStatusforandring", "typ",
+      "kategori", "underkategori", "anvandningsform",
+      "anvandbarhet", "beskrivningAnvandbarhet", "vertikalAvgransning",
+      "bestammelseformulering", "ursprungligBestammelseformulering",
+      "planbestammelsekatalogreferens", "sekundarEgenskapsgrans",
+      "giltighetstid", "borjarGallaEfter", "reglerarDetaljplan"
+    ],
+
+    "pset_name": "Pset_DetaljplanBestammelse",
+
+    "properties": {
+      "objektidentitet":                   { "name": "Objektidentitet",                   "type": "IfcIdentifier" },
+      "objektversion":                     { "name": "Objektversion",                      "type": "IfcLabel" },
+      "versionGiltigFran":                 { "name": "VersionGiltigFran",                  "type": "IfcLabel" },
+      "versionGiltigTill":                 { "name": "VersionGiltigTill",                  "type": "IfcLabel" },
+      "detaljplan":                        { "name": "Detaljplan",                         "type": "IfcIdentifier" },
+      "feature:typ":                       { "name": "FeatureTyp",                         "type": "IfcLabel" },
+      "kommun":                            { "name": "Kommun",                             "type": "IfcLabel" },
+      "beteckning":                        { "name": "Beteckning",                         "type": "IfcIdentifier" },
+      "namn":                              { "name": "Namn",                               "type": "IfcLabel" },
+      "syfte":                             { "name": "Syfte",                              "type": "IfcText" },
+      "status":                            { "name": "Status",                             "type": "IfcLabel" },
+      "datumStatusforandring":             { "name": "DatumStatusforandring",              "type": "IfcLabel" },
+      "typ":                               { "name": "Typ",                                "type": "IfcLabel" },
+      "kategori":                          { "name": "Kategori",                           "type": "IfcLabel" },
+      "underkategori":                     { "name": "Underkategori",                      "type": "IfcLabel" },
+      "anvandningsform":                   { "name": "Anvandningsform",                    "type": "IfcLabel" },
+      "anvandbarhet":                      { "name": "Anvandbarhet",                       "type": "IfcLabel" },
+      "beskrivningAnvandbarhet":           { "name": "BeskrivningAnvandbarhet",            "type": "IfcText" },
+      "vertikalAvgransning":               { "name": "VertikalAvgransning",                "type": "IfcLabel" },
+      "bestammelseformulering":            { "name": "BestammelseFormulering",             "type": "IfcText" },
+      "ursprungligBestammelseformulering": { "name": "UrsprungligBestammelseformulering",  "type": "IfcText" },
+      "bestammelsevarde":                  { "name": "Bestammelsevarde",                   "type": "IfcText" },
+      "planbestammelsekatalogreferens":    { "name": "Planbestammelsekatalogreferens",     "type": "IfcIdentifier" },
+      "motiv":                             { "name": "Motiv",                              "type": "IfcText" },
+      "reglerarAnvandningsbestammelse":    { "name": "ReglerarAnvandningsbestammelse",     "type": "IfcText" },
+      "reglerarDetaljplan":                { "name": "ReglerarDetaljplan",                 "type": "IfcIdentifier" },
+      "giltighetstid":                     { "name": "Giltighetstid",                      "type": "IfcLabel" },
+      "borjarGallaEfter":                  { "name": "BorjarGallaEfter",                   "type": "IfcLabel" },
+      "sekundarEgenskapsgrans":            { "name": "SekundarEgenskapsgrans",             "type": "IfcBoolean" },
+      "kvalitetDigitaliseringsniva":       { "name": "KvalitetDigitaliseringsniva",        "type": "IfcLabel" },
+      "kvalitetBeskrivningNiva":           { "name": "KvalitetBeskrivningNiva",            "type": "IfcText" },
+      "kvalitetKorrigeradeGranser":        { "name": "KvalitetKorrigeradeGranser",         "type": "IfcBoolean" },
+      "kvalitetKontrolleratPlaneringsunderlag": { "name": "KvalitetKontrolleratPlaneringsunderlag", "type": "IfcBoolean" },
+      "instansInomKommunen":               { "name": "InstansInomKommunen",                "type": "IfcLabel" },
+      "diarienummerKommun":                { "name": "DiarienummerKommun",                 "type": "IfcIdentifier" },
+      "diarienummerFullmaktige":           { "name": "DiarienummerFullmaktige",            "type": "IfcIdentifier" },
+      "beslutstyp":                        { "name": "Beslutstyp",                         "type": "IfcLabel" },
+      "datumPaborjat":                     { "name": "DatumPaborjat",                      "type": "IfcLabel" },
+      "datumAntagande":                    { "name": "DatumAntagande",                     "type": "IfcLabel" },
+      "datumLagakraft":                    { "name": "DatumLagakraft",                     "type": "IfcLabel" },
+      "genomforandetid":                   { "name": "Genomforandetid",                    "type": "IfcLabel" },
+      "genomforandetidStartar":            { "name": "GenomforandetidStartar",             "type": "IfcLabel" },
+      "arkividentitetKommun":              { "name": "ArkividentitetKommun",               "type": "IfcIdentifier" },
+      "foregaendePlansBeteckning":         { "name": "ForegaendePlansBeteckning",          "type": "IfcText" },
+      "berordDomsMalnummer":               { "name": "BerordDomsMalnummer",                "type": "IfcText" },
+      "koordinatsystemPlan":               { "name": "KoordinatsystemPlan",                "type": "IfcLabel" },
+      "hojdsystem":                        { "name": "Hojdsystem",                         "type": "IfcLabel" }
+    }
+  }
+}

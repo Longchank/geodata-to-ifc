@@ -1,0 +1,54 @@
+{
+  "_comment": "Shared schema for gml_to_ifc.py. Edit this file to change CityGML-type -> IFC-class mapping, the Pset name, or attribute IFC types - no code changes needed. The GML tag list that gets extracted (which fields exist at all) stays hardcoded in gml_to_ifc.py (SIMPLE_ATTR_TAGS/CODE_ATTR_TAGS) since it's tied to the parsing logic itself.",
+
+  "mapping": {
+    "building": {
+      "ifc_class": "IfcBuilding"
+    },
+
+    "cityfurniture": {
+      "_comment": "Keyed by 'class|function' coded-value pair, as they appear on frn:CityFurniture (see github.com/3CIM/3CIM2.0 CityFurniture_class.xml / CityFurniture_function.xml). Anything not listed here falls through to 'default' below.",
+      "by_class_function": {
+        "50000|51100": { "ifc_class": "IfcWall", "label": "Mur (wall)" },
+        "50000|51101": { "ifc_class": "IfcWall", "label": "Stödmur (retaining wall)" }
+      }
+    },
+
+    "transport": {
+      "_comment": "Keyed by the original CityGML element tag (tran:Track/Road/TrafficArea), carried through as the 'citygmlClass' attribute.",
+      "by_citygml_class": {
+        "Road":         { "ifc_class": "IfcRoad",    "note": "IfcFacility, aggregated into Site" },
+        "Track":        { "ifc_class": "IfcRoad",    "note": "CityGML 2.0 tran:Track = foot/cycle/horse path, not rail - mapped same as Road" },
+        "TrafficArea":  { "ifc_class": "IfcPavement", "note": "plain IfcElement, contained in Site" }
+      }
+    }
+  },
+
+  "default": {
+    "ifc_class": "IfcCivilElement",
+    "_comment": "Used whenever a CityObject's type/class/function doesn't match anything above. The original CityGML type is always kept as a 'citygmlType' Pset attribute so it stays traceable."
+  },
+
+  "_facility_comment": "IfcFacility subtypes that exist in IFC4X3_ADD2 - these are aggregated into IfcSite via IfcRelAggregates instead of being contained via IfcRelContainedInSpatialStructure. IfcBuilding is also an IfcFacility but has its own code path, so it is not listed here. (IfcTunnel is NOT in IFC4.3 - it arrives in IFC4.4.)",
+  "facility_ifc_classes": ["IfcRoad", "IfcBridge", "IfcRailway", "IfcMarineFacility"],
+
+  "attributes": {
+    "pset_name": "Pset_CityGMLAttributes",
+
+    "default_type": "IfcText",
+    "ext_prefix_type": "IfcIdentifier",
+
+    "value_types": {
+      "objektUUID":        "IfcIdentifier",
+      "version":           "IfcIdentifier",
+      "class":             "IfcLabel",
+      "function":          "IfcLabel",
+      "status":            "IfcLabel",
+      "citygmlClass":      "IfcLabel",
+      "roadNetworkRole":   "IfcLabel",
+      "relativeToTerrain": "IfcLabel",
+      "metodIHojdTyp":     "IfcLabel",
+      "metodIPlanTyp":     "IfcLabel"
+    }
+  }
+}
