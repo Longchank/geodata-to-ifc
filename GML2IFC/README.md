@@ -1,11 +1,12 @@
 # GML2IFC — CityGML (3CIM) → IFC
 
 Converts CityGML 2.0 files exported from 3DCityDB with the Swedish 3CIM/trecim ADE into one
-consolidated, georeferenced IFC 4.3.2.0 (`IFC4X3_ADD2`) model. Several heterogeneous export files
-covering one site (Building LOD0, Building LOD2, CityFurniture, Transport) are merged into a
-single output.
+consolidated, georeferenced IFC 4.3.2.0 (`IFC4X3_ADD2`) model — or IFC4 with `--ifc-version 4`.
+Several heterogeneous export files covering one site (Building LOD0, Building LOD2,
+CityFurniture, Transport) are merged into a single output.
 
-See the [root README](../README.md) for the shared georeferencing approach and why IFC 4.3.
+See the [root README](../README.md) for the shared georeferencing approach and the IFC version
+choice.
 
 ## Usage
 
@@ -17,6 +18,7 @@ python gml_to_ifc.py a.gml b.gml c.gml               # explicit files
 python gml_to_ifc.py raw\GML                         # every *.gml in a folder
 python gml_to_ifc.py --output result.ifc raw\GML
 python gml_to_ifc.py --dry-run raw\GML               # convert + report, write nothing
+python gml_to_ifc.py --ifc-version 4 raw\GML         # write IFC4 instead of IFC 4.3
 ```
 
 | Option | Purpose |
@@ -25,6 +27,7 @@ python gml_to_ifc.py --dry-run raw\GML               # convert + report, write n
 | `--project-name NAME` | `IfcProject`/`IfcSite` name. Default: `GML referensmodell`. |
 | `--false-origin E N [Z]` | Pin the false origin, in the inputs' own CRS. Default: the combined extent's minimum corner. |
 | `--schema PATH` | Use a different `schema.json`. |
+| `--ifc-version {4.3,4}` | IFC schema to write: `4.3` = `IFC4X3_ADD2` (default), `4` = `IFC4`. See [IFC4 output](#ifc4-output). |
 | `--dry-run` | Convert and report without writing output. |
 
 **Requirements:** Python 3.10+, `pip install ifcopenshell pyproj`. XML parsing is stdlib-only.
@@ -81,19 +84,29 @@ The mapping is read from [`schema.json`](schema.json) — edit that file, not th
 [`schema.xlsx`](schema.xlsx) is a readable matrix of the same information (Overview / Class
 mapping / Attributes sheets).
 
-| GML source | Match key | IFC class | Spatial relation |
-|---|---|---|---|
-| `bldg:Building` / `BuildingPart` | always | `IfcBuilding` | `IfcRelAggregates` |
-| `frn:CityFurniture` | `class\|function` = `50000\|51100` (*Mur*) | `IfcWall` | `IfcRelContainedInSpatialStructure` |
-| `frn:CityFurniture` | `class\|function` = `50000\|51101` (*Stödmur*) | `IfcWall` | `IfcRelContainedInSpatialStructure` |
-| `tran:Road` | `citygmlClass` = `Road` | `IfcRoad` | `IfcRelAggregates` |
-| `tran:Track` | `citygmlClass` = `Track` | `IfcRoad` | `IfcRelAggregates` |
-| `tran:TrafficArea` | `citygmlClass` = `TrafficArea` | `IfcPavement` | `IfcRelContainedInSpatialStructure` |
-| anything else | *(default)* | `IfcCivilElement` | `IfcRelContainedInSpatialStructure` |
+| GML source | Match key | IFC 4.3 class (default) | IFC4 class (`--ifc-version 4`) | Spatial relation (4.3 / 4) |
+|---|---|---|---|---|
+| `bldg:Building` / `BuildingPart` | always | `IfcBuilding` | `IfcBuilding` | `IfcRelAggregates` |
+| `frn:CityFurniture` | `class\|function` = `50000\|51100` (*Mur*) | `IfcWall` | `IfcWall` | contained |
+| `frn:CityFurniture` | `class\|function` = `50000\|51101` (*Stödmur*) | `IfcWall` | `IfcWall` | contained |
+| `tran:Road` | `citygmlClass` = `Road` | `IfcRoad` | `IfcCivilElement`, `ObjectType=Road` | aggregated / contained |
+| `tran:Track` | `citygmlClass` = `Track` | `IfcRoad` | `IfcCivilElement`, `ObjectType=Track` | aggregated / contained |
+| `tran:TrafficArea` | `citygmlClass` = `TrafficArea` | `IfcPavement` | `IfcCivilElement`, `ObjectType=TrafficArea` | contained |
+| anything else | *(default)* | `IfcCivilElement` | `IfcCivilElement` | contained |
 
-`IfcFacility` subtypes (`facility_ifc_classes` in `schema.json`) are aggregated into `IfcSite`
-via `IfcRelAggregates`; everything else is contained via `IfcRelContainedInSpatialStructure`.
-`IfcBuilding` is also an `IfcFacility` but has its own code path, so it isn't listed there.
+"Contained" = `IfcRelContainedInSpatialStructure` in the `IfcSite`. `IfcFacility` subtypes are
+instead aggregated into `IfcSite` via `IfcRelAggregates`. Which classes count as facilities is
+read from the IFC schema's own inheritance, not configured, so it can't drift out of date.
+`IfcBuilding` is also an `IfcFacility` but has its own code path.
+
+### IFC4 output
+
+IFC4 has no `IfcRoad`, `IfcPavement` or `IfcFacility`, so transport objects become
+`IfcCivilElement` with the CityGML class in `ObjectType`, and sit directly in the site rather
+than forming their own spatial level. Everything else is identical: buildings, walls, the
+`BEGEES_CityGMLAttributes` property set, and georeferencing (`IfcMapConversion` and
+`IfcProjectedCRS` have the same attributes in both schemas). The report lists IFC4 roads per
+`ObjectType`, e.g. `IfcCivilElement (Road)`.
 
 ### Why these mappings
 
@@ -116,13 +129,16 @@ via `IfcRelAggregates`; everything else is contained via `IfcRelContainedInSpati
 Any `class`/`function` combination not listed in `schema.json` lands in `IfcCivilElement` and is
 counted in the report's fallback line — that count is the signal to add a mapping.
 
-### IFC 4.3 facts worth knowing before editing `schema.json`
+### IFC facts worth knowing before editing `schema.json`
 
 - **`IfcTunnel` does not exist in IFC 4.3** — it arrives in IFC 4.4. The real `IfcFacility`
   subtypes are `IfcRoad`, `IfcBridge`, `IfcRailway`, `IfcMarineFacility` and `IfcBuilding`.
-- `IfcCivilElement` has no `PredefinedType` attribute.
-- Names are validated at load time, so a typo fails immediately with the offending JSON key
-  named — including abstract classes, which cannot be instantiated.
+- **None of those infrastructure classes exist in IFC4**, nor does `IfcPavement`. Any entry
+  using one needs an `ifc_schema_overrides.IFC4` block.
+- `IfcCivilElement` has no `PredefinedType` attribute in either version.
+- Names are validated at load time **against both IFC versions**, whichever one you are running,
+  so a typo or a missing IFC4 override fails immediately with the offending JSON key named —
+  including abstract classes, which cannot be instantiated.
 
 ## Georeferencing
 
@@ -150,8 +166,9 @@ A run **aborts** when:
   because guessing one mis-georeferences the whole model while still producing a file that looks
   correct;
 - the inputs **disagree on their EPSG code** — one consolidated model needs one CRS;
-- **`schema.json` names an IFC class or value type that doesn't exist** in IFC 4.3, is abstract,
-  or is the wrong kind.
+- **`schema.json` names an IFC class or value type that doesn't exist** in IFC 4.3 or IFC4
+  (after `ifc_schema_overrides`), is abstract, or is the wrong kind — or an override names an
+  unknown schema.
 
 Non-finite or malformed coordinates don't abort the run: the offending `gml:posList` is rejected
 and **counted in the report**, because a single `nan` would otherwise reach the false origin and
@@ -160,8 +177,16 @@ spread to every coordinate in a file that still looked like a clean success.
 ## Editing `schema.json`
 
 Class mapping lives under `mapping` (`building`, `cityfurniture.by_class_function` keyed by
-`"class|function"`, `transport.by_citygml_class`) with a `default` fallback, and
-`facility_ifc_classes` controls which classes aggregate into the site.
+`"class|function"`, `transport.by_citygml_class`) with a `default` fallback. Each entry has an
+`ifc_class` and optionally an `ifc_object_type` (written to `ObjectType`). These base keys describe
+IFC 4.3; an entry adds `ifc_schema_overrides` only for what differs in another schema:
+
+```json
+"Road": {
+  "ifc_class": "IfcRoad",
+  "ifc_schema_overrides": { "IFC4": { "ifc_class": "IfcCivilElement", "ifc_object_type": "Road" } }
+}
+```
 
 Under `attributes`, `value_types` sets the IFC type per Pset property; anything unlisted uses
 `default_type`, and keys built from `core:externalReference` (`ext_*`) use `ext_prefix_type`.

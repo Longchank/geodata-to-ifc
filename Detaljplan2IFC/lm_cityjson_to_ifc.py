@@ -3,7 +3,8 @@
 lm_cityjson_to_ifc.py
 ─────────────────────
 Stage 2 of 2. Converts the CityJSON 1.0 output of lm_detaljplan_to_cityjson.py
-into a georeferenced IFC 4.3.2.0 (IFC4X3_ADD2) reference model, so architects
+into a georeferenced IFC 4.3.2.0 (IFC4X3_ADD2) reference model — or IFC4 with
+--ifc-version 4 — so architects
 can load the legal building envelopes of a detaljplan (Swedish zoning plan) as
 context geometry.
 
@@ -31,13 +32,20 @@ from pathlib import Path
 
 import ifcopenshell
 import ifcopenshell.guid as guid
+import ifcopenshell.ifcopenshell_wrapper as ifc_wrapper
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Constants
 # ══════════════════════════════════════════════════════════════════════════════
 
-IFC_SCHEMA = "IFC4X3_ADD2"  # = IFC 4.3.2.0
+# --ifc-version value -> (ifcopenshell schema identifier, human-readable label).
+# Same table as GML2IFC/gml_to_ifc.py.
+IFC_VERSIONS = {
+    "4.3": ("IFC4X3_ADD2", "IFC 4.3.2.0"),
+    "4":   ("IFC4",        "IFC 4.0.2.1"),
+}
+DEFAULT_IFC_VERSION = "4"
 
 # False project origin, in the source file's own CRS map coordinates.
 # All IFC geometry is stored relative to this point; IfcMapConversion
@@ -87,15 +95,51 @@ def load_schema(path: Path) -> dict:
     if "pset_name" not in attrs or "properties" not in attrs:
         raise ValueError(f"Schema file {path} is missing required key "
                           f"'attributes.pset_name' or 'attributes.properties'.")
+    _validate_ifc_classes(schema, path)
     return schema
 
 
-def schema_entry_for(cityobject: dict, schema: dict) -> dict:
+def _validate_ifc_classes(schema: dict, path: Path) -> None:
+    """Checks every feature_types/default ifc_class against every supported
+    --ifc-version (overrides applied), so a class missing from one schema fails
+    at load time naming the JSON key, not as a RuntimeError mid-conversion."""
+    known_schemas = {s for s, _ in IFC_VERSIONS.values()}
+    entries = [(f"feature_types['{k}']", e) for k, e in schema["feature_types"].items()]
+    entries.append(("default", schema["default"]))
+    for where, entry in entries:
+        unknown = set(entry.get("ifc_schema_overrides", {})) - known_schemas
+        if unknown:
+            raise ValueError(f"Schema file {path}: {where}.ifc_schema_overrides has unknown "
+                             f"schema key(s) {sorted(unknown)} — expected one of "
+                             f"{sorted(known_schemas)}")
+        for ifc_schema in sorted(known_schemas):
+            name = resolve_entry(entry, ifc_schema).get("ifc_class")
+            try:
+                ok = ifc_wrapper.schema_by_name(ifc_schema) \
+                    .declaration_by_name(name).as_entity() is not None
+            except (RuntimeError, TypeError):
+                ok = False
+            if not ok:
+                raise ValueError(f"Schema file {path}: {where}.ifc_class = {name!r} is not an "
+                                 f"entity in {ifc_schema} — add an "
+                                 f"ifc_schema_overrides.{ifc_schema} block for it")
+
+
+def resolve_entry(entry: dict, ifc_schema: str) -> dict:
+    """A schema.json entry with its "ifc_schema_overrides"[ifc_schema] block (if
+    any) merged over the base keys, which describe IFC 4.3."""
+    merged = {k: v for k, v in entry.items() if k != "ifc_schema_overrides"}
+    merged.update(entry.get("ifc_schema_overrides", {}).get(ifc_schema, {}))
+    return merged
+
+
+def schema_entry_for(cityobject: dict, schema: dict, ifc_schema: str) -> dict:
     """The feature_types entry for this CityObject's own feature:typ attribute,
     or schema['default'] if it's missing/unrecognized (the schema's chosen
-    fallback IFC class, no color, unless a color is added to 'default' too)."""
+    fallback IFC class, no color, unless a color is added to 'default' too),
+    with any overrides for ifc_schema applied."""
     ftype = cityobject["attributes"].get("feature:typ", "")
-    return schema["feature_types"].get(ftype) or schema["default"]
+    return resolve_entry(schema["feature_types"].get(ftype) or schema["default"], ifc_schema)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -447,8 +491,9 @@ def attach_pset(f: ifcopenshell.file, owner_history, product, attributes: dict, 
 
 
 def convert(cj: dict, project_name: str, false_origin: tuple,
-            epsg_code: int, crs_name: str, schema: dict) -> tuple[ifcopenshell.file, dict]:
-    f = ifcopenshell.file(schema=IFC_SCHEMA)
+            epsg_code: int, crs_name: str, schema: dict,
+            ifc_schema: str) -> tuple[ifcopenshell.file, dict]:
+    f = ifcopenshell.file(schema=ifc_schema)
     owner_history = create_owner_history(f)
     units = create_units(f)
     context, body_context = create_context(f)
@@ -471,7 +516,7 @@ def convert(cj: dict, project_name: str, false_origin: tuple,
     non_site_products = []
 
     for fid, cityobject in cj["CityObjects"].items():
-        entry = schema_entry_for(cityobject, schema)
+        entry = schema_entry_for(cityobject, schema, ifc_schema)
         ifc_class = entry["ifc_class"]
         shape = gb.build_shape(body_context, cityobject["geometry"], entry.get("color"))
         placement = identity_placement(f)
@@ -543,7 +588,8 @@ def convert(cj: dict, project_name: str, false_origin: tuple,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def print_report(path_in: Path, path_out: Path, stats: dict, dry_run: bool, false_origin: tuple,
-                  crs_name: str):
+                  crs_name: str, ifc_version: str):
+    ifc_schema, ifc_label = IFC_VERSIONS[ifc_version]
     width = 60
     print("─" * width)
     print("  lm_cityjson_to_ifc.py")
@@ -553,7 +599,7 @@ def print_report(path_in: Path, path_out: Path, stats: dict, dry_run: bool, fals
         size_kb = path_out.stat().st_size // 1024
         print(f"  Output : {path_out.name}  ({size_kb} KB)")
     print()
-    print(f"  Schema      : {IFC_SCHEMA}  (IFC 4.3.2.0)")
+    print(f"  Schema      : {ifc_schema}  ({ifc_label})")
     print(f"  CRS         : {crs_name}, vertical {CRS_VERTICAL}")
     print(f"  False origin: E={false_origin[0]}  N={false_origin[1]}  Z={false_origin[2]}")
     print()
@@ -575,7 +621,7 @@ def print_report(path_in: Path, path_out: Path, stats: dict, dry_run: bool, fals
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert a CityJSON 1.0 detaljplan file to a georeferenced IFC 4.3.2.0 model.",
+        description="Convert a CityJSON 1.0 detaljplan file to a georeferenced IFC model.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="The output is saved next to the input as <name>.ifc",
     )
@@ -592,6 +638,9 @@ def main():
                         help="Path to schema.json (default: schema.json next to this script)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Convert and report without writing any output")
+    parser.add_argument("--ifc-version", choices=list(IFC_VERSIONS), default=DEFAULT_IFC_VERSION,
+                        help="IFC schema to write: 4.3 = IFC4X3_ADD2, 4 = IFC4 "
+                             f"(default: {DEFAULT_IFC_VERSION})")
     args = parser.parse_args()
 
     if args.false_origin and len(args.false_origin) not in (2, 3):
@@ -645,12 +694,13 @@ def main():
         sys.exit(1)
 
     print("Converting…")
-    ifc_file, stats = convert(cj, project_name, false_origin, epsg_code, crs_name, schema)
+    ifc_file, stats = convert(cj, project_name, false_origin, epsg_code, crs_name, schema,
+                              IFC_VERSIONS[args.ifc_version][0])
 
     if not args.dry_run:
         ifc_file.write(str(path_out))
 
-    print_report(path_in, path_out, stats, args.dry_run, false_origin, crs_name)
+    print_report(path_in, path_out, stats, args.dry_run, false_origin, crs_name, args.ifc_version)
 
 
 if __name__ == "__main__":

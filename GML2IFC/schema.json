@@ -17,9 +17,18 @@
     "transport": {
       "_comment": "Keyed by the original CityGML element tag (tran:Track/Road/TrafficArea), carried through as the 'citygmlClass' attribute.",
       "by_citygml_class": {
-        "Road":         { "ifc_class": "IfcRoad",    "note": "IfcFacility, aggregated into Site" },
-        "Track":        { "ifc_class": "IfcRoad",    "note": "CityGML 2.0 tran:Track = foot/cycle/horse path, not rail - mapped same as Road" },
-        "TrafficArea":  { "ifc_class": "IfcPavement", "note": "plain IfcElement, contained in Site" }
+        "Road": {
+          "ifc_class": "IfcRoad", "note": "IfcFacility, aggregated into Site",
+          "ifc_schema_overrides": { "IFC4": { "ifc_class": "IfcCivilElement", "ifc_object_type": "Road" } }
+        },
+        "Track": {
+          "ifc_class": "IfcRoad", "note": "CityGML 2.0 tran:Track = foot/cycle/horse path, not rail - mapped same as Road",
+          "ifc_schema_overrides": { "IFC4": { "ifc_class": "IfcCivilElement", "ifc_object_type": "Track" } }
+        },
+        "TrafficArea": {
+          "ifc_class": "IfcPavement", "note": "plain IfcElement, contained in Site",
+          "ifc_schema_overrides": { "IFC4": { "ifc_class": "IfcCivilElement", "ifc_object_type": "TrafficArea" } }
+        }
       }
     }
   },
@@ -29,8 +38,7 @@
     "_comment": "Used whenever a CityObject's type/class/function doesn't match anything above. The original CityGML type is always kept as a 'citygmlType' Pset attribute so it stays traceable."
   },
 
-  "_facility_comment": "IfcFacility subtypes that exist in IFC4X3_ADD2 - these are aggregated into IfcSite via IfcRelAggregates instead of being contained via IfcRelContainedInSpatialStructure. IfcBuilding is also an IfcFacility but has its own code path, so it is not listed here. (IfcTunnel is NOT in IFC4.3 - it arrives in IFC4.4.)",
-  "facility_ifc_classes": ["IfcRoad", "IfcBridge", "IfcRailway", "IfcMarineFacility"],
+  "_ifc_schema_overrides_comment": "Base keys (ifc_class, optional ifc_object_type -> IfcObject.ObjectType) describe IFC 4.3 (IFC4X3_ADD2). Any mapping entry may add 'ifc_schema_overrides': { '<schema>': {...} } with the keys that differ when running with --ifc-version 4 (schema 'IFC4'), which has no IfcRoad/IfcPavement/IfcFacility. Every entry is validated against every supported schema at load time. Which classes aggregate into IfcSite (IfcFacility subtypes) vs are contained in it is read from the IFC schema itself, not configured here.",
 
   "attributes": {
     "_pset_name_comment": "Must NOT start with 'Pset_' - buildingSMART reserves that prefix for its own standard property sets.",

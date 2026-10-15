@@ -1,8 +1,8 @@
 # Detaljplan2IFC — Lantmäteriet detaljplan → IFC
 
 Converts a Swedish **detaljplan** (municipal zoning plan) from Lantmäteriet's
-`vnd.lm.detaljplan.v4+json` format into a georeferenced IFC 4.3.2.0 (`IFC4X3_ADD2`) reference
-model, so architects can load the plan's **legal building envelopes** as context geometry with
+`vnd.lm.detaljplan.v4+json` format into a georeferenced IFC 4.3.2.0 (`IFC4X3_ADD2`) — or, with
+`--ifc-version 4`, IFC4 — reference model, so architects can load the plan's **legal building envelopes** as context geometry with
 the plan's provisions attached as inspectable IFC properties.
 
 Two stages, run in order:
@@ -14,7 +14,7 @@ Two stages, run in order:
 
 Both stages read the **same** [`schema.json`](schema.json), so they can never disagree about what
 a given plan feature type means. See the [root README](../README.md) for the shared
-georeferencing approach and why IFC 4.3.
+georeferencing approach and the IFC version choice.
 
 ## Usage
 
@@ -30,6 +30,7 @@ python lm_detaljplan_to_cityjson.py input.json --output result.city.json
 python lm_cityjson_to_ifc.py input.city.json
 python lm_cityjson_to_ifc.py input.city.json --output result.ifc
 python lm_cityjson_to_ifc.py input.city.json --false-origin E N [Z]
+python lm_cityjson_to_ifc.py input.city.json --ifc-version 4    # IFC4 instead of IFC 4.3
 ```
 
 | Option | Stage | Purpose |
@@ -39,6 +40,7 @@ python lm_cityjson_to_ifc.py input.city.json --false-origin E N [Z]
 | `--dry-run` | both | Convert and report without writing anything. |
 | `--project-name NAME` | 2 | `IfcProject` name. Default: the CityJSON metadata title. |
 | `--false-origin E N [Z]` | 2 | Pin the false origin, in the source file's own CRS zone. Default: the input's `transform.translate`. |
+| `--ifc-version {4.3,4}` | 2 | IFC schema to write: `4.3` = `IFC4X3_ADD2` (default), `4` = `IFC4`. Output is otherwise identical — every class used here exists in both. |
 
 **Requirements:** Python 3.10+. Stage 1 needs no third-party packages; stage 2 needs
 `pip install ifcopenshell pyproj`.
@@ -133,6 +135,11 @@ Read from [`schema.json`](schema.json), keyed by `feature:typ` directly.
 Keying by `feature:typ` rather than by CityJSON type is deliberate: `administrativ bestämmelse`
 and `egenskapsbestämmelse` currently share `IfcCivilElement`, but keeping them as separate
 entries means either can be restyled or reclassified independently later.
+
+All of these classes exist in both IFC 4.3 and IFC4, so `--ifc-version 4` changes nothing here.
+If a class that exists only in 4.3 is ever introduced, give that entry an
+`"ifc_schema_overrides": { "IFC4": { "ifc_class": … } }` block. Every entry is checked against
+both IFC versions at load time, so a missing override fails immediately with the JSON key named.
 
 `colour` is given as `rgb` + `alpha` in the normal graphics sense (`0` = invisible, `1` = opaque)
 and is flipped to IFC's inverted `Transparency` measure in code, so the file itself stays

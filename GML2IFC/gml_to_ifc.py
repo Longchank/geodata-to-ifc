@@ -3,7 +3,8 @@
 gml_to_ifc.py
 ─────────────
 Converts CityGML 2.0 files exported from 3DCityDB (with the Swedish 3CIM/trecim
-ADE) into ONE consolidated, georeferenced IFC 4.3.2.0 (IFC4X3_ADD2) model.
+ADE) into ONE consolidated, georeferenced IFC 4.3.2.0 (IFC4X3_ADD2) model, or
+IFC4 with --ifc-version 4.
 Written as a direct exporter with ifcopenshell, same approach as
 Detaljplan2IFC/lm_cityjson_to_ifc.py.
 
@@ -506,7 +507,14 @@ def detect_epsg_from_gml(root, path: Path) -> int:
 # Constants — IFC mapping
 # ══════════════════════════════════════════════════════════════════════════════
 
-IFC_SCHEMA = "IFC4X3_ADD2"  # = IFC 4.3.2.0
+# --ifc-version value -> (ifcopenshell schema identifier, human-readable label).
+# IFC4 has no infrastructure classes (IfcRoad, IfcPavement, IfcFacility), so
+# schema.json entries carry per-schema "ifc_schema_overrides" for those.
+IFC_VERSIONS = {
+    "4.3": ("IFC4X3_ADD2", "IFC 4.3.2.0"),
+    "4":   ("IFC4",        "IFC 4.0.2.1"),
+}
+DEFAULT_IFC_VERSION = "4.3"
 
 # Datum/vertical-datum have no CityGML-standard field to detect from, so these
 # two stay as a documented Sweden-specific residual (see detect_epsg_from_gml
@@ -546,86 +554,112 @@ def load_schema(path: Path) -> dict:
     return schema
 
 
+def resolve_entry(entry: dict, ifc_schema: str) -> dict:
+    """A schema.json mapping entry with its "ifc_schema_overrides"[ifc_schema]
+    block (if any) merged over the base keys — the base keys describe IFC 4.3,
+    overrides only what differs in another schema (e.g. IfcRoad -> IfcCivilElement
+    in IFC4, which has no infrastructure classes)."""
+    merged = {k: v for k, v in entry.items() if k != "ifc_schema_overrides"}
+    merged.update(entry.get("ifc_schema_overrides", {}).get(ifc_schema, {}))
+    return merged
+
+
+def _mapping_entries(schema: dict) -> list[tuple[str, dict]]:
+    """Every (json-key-path, entry) in schema.json that maps to an IFC class."""
+    mapping = schema["mapping"]
+    entries = [("mapping.building", mapping["building"]), ("default", schema["default"])]
+    for key, entry in mapping.get("cityfurniture", {}).get("by_class_function", {}).items():
+        entries.append((f"mapping.cityfurniture.by_class_function['{key}']", entry))
+    for key, entry in mapping.get("transport", {}).get("by_citygml_class", {}).items():
+        entries.append((f"mapping.transport.by_citygml_class['{key}']", entry))
+    return entries
+
+
 def _validate_ifc_names(schema: dict, path: Path) -> None:
     """Checks every IFC entity/value-type name in schema.json against the real
     IFC schema, so a typo fails immediately with a clear message naming the
     offending key — instead of a bare RuntimeError/TypeError out of
-    create_entity() after the whole GML parse has already run."""
-    decls = ifc_wrapper.schema_by_name(IFC_SCHEMA)
-
-    def declaration(name):
-        if not isinstance(name, str):
-            return None
-        try:
-            return decls.declaration_by_name(name)
-        except RuntimeError:
-            return None
-
-    mapping = schema["mapping"]
-    entity_names = [("mapping.building.ifc_class", mapping["building"]["ifc_class"]),
-                    ("default.ifc_class", schema["default"]["ifc_class"])]
-    for key, entry in mapping.get("cityfurniture", {}).get("by_class_function", {}).items():
-        entity_names.append((f"mapping.cityfurniture.by_class_function['{key}'].ifc_class",
-                             entry.get("ifc_class")))
-    for key, entry in mapping.get("transport", {}).get("by_citygml_class", {}).items():
-        entity_names.append((f"mapping.transport.by_citygml_class['{key}'].ifc_class",
-                             entry.get("ifc_class")))
-    # A typo here silently nests the object under the wrong spatial relation
-    # rather than erroring, so it is worth validating too.
-    for name in schema.get("facility_ifc_classes", []):
-        entity_names.append(("facility_ifc_classes", name))
-
-    for where, name in entity_names:
-        decl = declaration(name)
-        entity = decl.as_entity() if decl is not None else None
-        if entity is None:
+    create_entity() after the whole GML parse has already run. Runs for EVERY
+    supported --ifc-version, not just the one requested, so a broken IFC4
+    override can't hide until someone happens to run with --ifc-version 4."""
+    known_schemas = {s for s, _ in IFC_VERSIONS.values()}
+    for where, entry in _mapping_entries(schema):
+        unknown = set(entry.get("ifc_schema_overrides", {})) - known_schemas
+        if unknown:
             raise ValueError(
-                f"{path}: {where} = {name!r} is not an entity in {IFC_SCHEMA}")
-        if entity.is_abstract():
-            raise ValueError(
-                f"{path}: {where} = {name!r} is abstract in {IFC_SCHEMA} "
-                f"and cannot be instantiated")
+                f"{path}: {where}.ifc_schema_overrides has unknown schema key(s) "
+                f"{sorted(unknown)} — expected one of {sorted(known_schemas)}")
 
-    attrs = schema["attributes"]
-    type_names = [("attributes.default_type", attrs["default_type"]),
-                  ("attributes.ext_prefix_type", attrs["ext_prefix_type"])]
-    type_names += [(f"attributes.value_types.{k}", v) for k, v in attrs["value_types"].items()]
+    for ifc_schema, _ in IFC_VERSIONS.values():
+        decls = ifc_wrapper.schema_by_name(ifc_schema)
 
-    for where, name in type_names:
-        decl = declaration(name)
-        if decl is None or decl.as_entity() is not None:
-            raise ValueError(
-                f"{path}: {where} = {name!r} is not an IFC value type in {IFC_SCHEMA}")
+        def declaration(name):
+            if not isinstance(name, str):
+                return None
+            try:
+                return decls.declaration_by_name(name)
+            except RuntimeError:
+                return None
+
+        for where, entry in _mapping_entries(schema):
+            name = resolve_entry(entry, ifc_schema).get("ifc_class")
+            decl = declaration(name)
+            entity = decl.as_entity() if decl is not None else None
+            if entity is None:
+                raise ValueError(
+                    f"{path}: {where}.ifc_class = {name!r} is not an entity in {ifc_schema} "
+                    f"— add an ifc_schema_overrides.{ifc_schema} block for it")
+            if entity.is_abstract():
+                raise ValueError(
+                    f"{path}: {where}.ifc_class = {name!r} is abstract in {ifc_schema} "
+                    f"and cannot be instantiated")
+
+        attrs = schema["attributes"]
+        type_names = [("attributes.default_type", attrs["default_type"]),
+                      ("attributes.ext_prefix_type", attrs["ext_prefix_type"])]
+        type_names += [(f"attributes.value_types.{k}", v) for k, v in attrs["value_types"].items()]
+
+        for where, name in type_names:
+            decl = declaration(name)
+            if decl is None or decl.as_entity() is not None:
+                raise ValueError(
+                    f"{path}: {where} = {name!r} is not an IFC value type in {ifc_schema}")
 
 
-# IFC 4.3 top-level infrastructure IfcFacility subtypes — these decompose from IfcSite via
-# IfcRelAggregates (like IfcBuilding), not IfcRelContainedInSpatialStructure (like a plain
-# IfcElement). Which classes count as facilities is schema-driven (schema["facility_ifc_classes"]),
-# this is just the type-check helper.
-def facility_ifc_classes(schema: dict) -> set:
-    return set(schema.get("facility_ifc_classes", []))
+def is_facility(ifc_class: str, ifc_schema: str) -> bool:
+    """True for IfcFacility subtypes (IfcRoad, IfcBridge, … in IFC 4.3) — these
+    decompose from IfcSite via IfcRelAggregates, not IfcRelContainedInSpatialStructure
+    like a plain IfcElement. Read from the IFC schema's own inheritance rather than
+    a hand-kept list, so it can't drift (a list once wrongly held IfcTunnel). Always
+    False in IFC4, which has no IfcFacility."""
+    ent = ifc_wrapper.schema_by_name(ifc_schema).declaration_by_name(ifc_class).as_entity()
+    while ent is not None:
+        if ent.name() == "IfcFacility":
+            return True
+        ent = ent.supertype()
+    return False
 
 
-def resolve_ifc_class(cityobject_type: str, attrs: dict, schema: dict) -> tuple[str, bool]:
+def resolve_ifc_class(cityobject_type: str, attrs: dict, schema: dict,
+                      ifc_schema: str) -> tuple[str, str | None, bool]:
     """Maps one parsed object to an IFC entity name using schema["mapping"].
-    Returns (ifc_class, is_fallback) — is_fallback is True whenever nothing more
-    specific matched, so the caller can preserve the original CityGML type as an
-    attribute (see schema["default"])."""
+    Returns (ifc_class, object_type, is_fallback) — object_type is the entry's
+    optional "ifc_object_type" (written to IfcObject.ObjectType), and is_fallback
+    is True whenever nothing more specific matched, so the caller can preserve
+    the original CityGML type as an attribute (see schema["default"])."""
     mapping = schema["mapping"]
-    ifc_class = None
+    entry = None
     if cityobject_type == "CityFurniture":
         key = "|".join((attrs.get("class") or "", attrs.get("function") or ""))
         entry = mapping.get("cityfurniture", {}).get("by_class_function", {}).get(key)
-        ifc_class = entry["ifc_class"] if entry else None
     elif cityobject_type == "Road":
         # process_transport collapses CityGML Track/Road/TrafficArea into type
         # "Road" — citygmlClass carries which.
         entry = mapping.get("transport", {}).get("by_citygml_class", {}).get(attrs.get("citygmlClass"))
-        ifc_class = entry["ifc_class"] if entry else None
 
-    if ifc_class is None:
-        return schema["default"]["ifc_class"], True
-    return ifc_class, False
+    is_fallback = entry is None
+    resolved = resolve_entry(schema["default"] if is_fallback else entry, ifc_schema)
+    return resolved["ifc_class"], resolved.get("ifc_object_type"), is_fallback
 
 
 def ifc_value_type_for(key: str, schema: dict) -> str:
@@ -981,8 +1015,9 @@ def parse_gml_files(paths: list[Path]) -> tuple[dict, int, str]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def convert(ctx: dict, project_name: str, false_origin: tuple,
-            epsg_code: int, crs_name: str, schema: dict) -> tuple[ifcopenshell.file, dict]:
-    f = ifcopenshell.file(schema=IFC_SCHEMA)
+            epsg_code: int, crs_name: str, schema: dict,
+            ifc_schema: str) -> tuple[ifcopenshell.file, dict]:
+    f = ifcopenshell.file(schema=ifc_schema)
     owner_history = create_owner_history(f)
     units = create_units(f)
     context, body_context = create_context(f)
@@ -1011,7 +1046,7 @@ def convert(ctx: dict, project_name: str, false_origin: tuple,
                           skipped_kinds=stats["skipped_geometry_kinds"])
 
     # ── Buildings: LOD2 solid preferred, LOD0 footprint fallback ──────────────
-    building_ifc_class = schema["mapping"]["building"]["ifc_class"]
+    building_ifc_class = resolve_entry(schema["mapping"]["building"], ifc_schema)["ifc_class"]
     building_products = []
     for uuid, b in ctx["buildings"].items():
         is_fallback = not b["lod2_geoms"]
@@ -1034,7 +1069,6 @@ def convert(ctx: dict, project_name: str, false_origin: tuple,
                          RelatingObject=site, RelatedObjects=building_products)
 
     # ── CityFurniture + Transport: one generic per-object dispatch ─────────
-    facility_classes = facility_ifc_classes(schema)
     contained_products = []
     facility_products = []
     for fid, o in ctx["objs"].items():
@@ -1043,27 +1077,30 @@ def convert(ctx: dict, project_name: str, false_origin: tuple,
         cityobject_type = o.get("type")
         name = attrs.get("description") or fid
 
-        ifc_class, is_fallback = resolve_ifc_class(cityobject_type, attrs, schema)
+        ifc_class, object_type, is_fallback = resolve_ifc_class(
+            cityobject_type, attrs, schema, ifc_schema)
         if is_fallback:
             # Never silently mislabel: keep the original CityGML type traceable
             # on whatever fell through to schema["default"]["ifc_class"].
             attrs["citygmlType"] = o.get("citygmlType", cityobject_type)
             stats["fallback_count"] += 1
 
-        if ifc_class in facility_classes:
-            product = f.create_entity(
-                ifc_class, GlobalId=guid.new(), OwnerHistory=owner_history,
-                Name=name, ObjectPlacement=identity_placement(f), Representation=shape,
-                CompositionType="ELEMENT")
+        kwargs = dict(GlobalId=guid.new(), OwnerHistory=owner_history,
+                      Name=name, ObjectPlacement=identity_placement(f), Representation=shape)
+        if object_type:
+            kwargs["ObjectType"] = object_type
+        if is_facility(ifc_class, ifc_schema):
+            product = f.create_entity(ifc_class, CompositionType="ELEMENT", **kwargs)
             facility_products.append(product)
         else:
-            product = f.create_entity(
-                ifc_class, GlobalId=guid.new(), OwnerHistory=owner_history,
-                Name=name, ObjectPlacement=identity_placement(f), Representation=shape)
+            product = f.create_entity(ifc_class, **kwargs)
             contained_products.append(product)
 
         attach_pset(f, owner_history, product, attrs, schema)
-        stats[ifc_class] = stats.get(ifc_class, 0) + 1
+        # Keyed by ObjectType too, so e.g. IFC4's Road/Track/TrafficArea don't
+        # all collapse into one indistinguishable IfcCivilElement count.
+        stat_key = f"{ifc_class} ({object_type})" if object_type else ifc_class
+        stats[stat_key] = stats.get(stat_key, 0) + 1
 
     if facility_products:
         f.create_entity("IfcRelAggregates", GlobalId=guid.new(), OwnerHistory=owner_history,
@@ -1088,7 +1125,9 @@ def _format_detail(detail: dict | None) -> str:
 
 
 def print_report(in_paths: list[Path], path_out: Path, ctx: dict, stats: dict,
-                  dry_run: bool, false_origin: tuple, crs_name: str, schema: dict) -> None:
+                  dry_run: bool, false_origin: tuple, crs_name: str, schema: dict,
+                  ifc_version: str) -> None:
+    ifc_schema, ifc_label = IFC_VERSIONS[ifc_version]
     width = 60
     print("─" * width)
     print("  gml_to_ifc.py")
@@ -1099,7 +1138,7 @@ def print_report(in_paths: list[Path], path_out: Path, ctx: dict, stats: dict,
         size_kb = path_out.stat().st_size // 1024
         print(f"  Output: {path_out.name}  ({size_kb} KB)")
     print()
-    print(f"  Schema      : {IFC_SCHEMA}  (IFC 4.3.2.0)")
+    print(f"  Schema      : {ifc_schema}  ({ifc_label})")
     print(f"  CRS         : {crs_name}, vertical {CRS_VERTICAL}")
     print(f"  False origin: E={false_origin[0]}  N={false_origin[1]}  Z={false_origin[2]}")
     print()
@@ -1128,7 +1167,8 @@ def print_report(in_paths: list[Path], path_out: Path, ctx: dict, stats: dict,
     )
     for ifc_class in other_classes:
         print(f"    {ifc_class:<38}: {stats[ifc_class]}")
-    print(f"    (unrecognised type -> {schema['default']['ifc_class']}, w/ citygmlType): "
+    print(f"    (unrecognised type -> {resolve_entry(schema['default'], ifc_schema)['ifc_class']}, "
+          f"w/ citygmlType): "
           f"{stats['fallback_count']}")
     skipped = stats.get("skipped_geometry_kinds") or {}
     if skipped:
@@ -1159,7 +1199,7 @@ def resolve_inputs(raw_inputs: list[str]) -> list[Path]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert CityGML 2.0 (.gml) files directly to one consolidated IFC4 model.",
+        description="Convert CityGML 2.0 (.gml) files directly to one consolidated IFC model.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "A folder argument converts every *.gml file inside it.\n"
@@ -1179,7 +1219,12 @@ def main():
                          help="Convert and report without writing any output")
     parser.add_argument("--schema", default=None,
                          help="Path to schema.json (default: schema.json next to this script)")
+    parser.add_argument("--ifc-version", choices=list(IFC_VERSIONS), default=DEFAULT_IFC_VERSION,
+                         help="IFC schema to write: 4.3 = IFC4X3_ADD2, 4 = IFC4 "
+                              f"(default: {DEFAULT_IFC_VERSION}). IFC4 has no road/pavement "
+                              "classes — see ifc_schema_overrides in schema.json.")
     args = parser.parse_args()
+    ifc_schema = IFC_VERSIONS[args.ifc_version][0]
 
     if args.false_origin and len(args.false_origin) not in (2, 3):
         parser.error("--false-origin takes 2 or 3 values: EASTING NORTHING [HEIGHT]")
@@ -1218,12 +1263,14 @@ def main():
     path_out = Path(args.output) if args.output else Path(__file__).resolve().parent / "model.ifc"
 
     print("\nConverting…")
-    ifc_file, stats = convert(ctx, args.project_name, false_origin, epsg_code, crs_name, schema)
+    ifc_file, stats = convert(ctx, args.project_name, false_origin, epsg_code, crs_name, schema,
+                              ifc_schema)
 
     if not args.dry_run:
         ifc_file.write(str(path_out))
 
-    print_report(in_paths, path_out, ctx, stats, args.dry_run, false_origin, crs_name, schema)
+    print_report(in_paths, path_out, ctx, stats, args.dry_run, false_origin, crs_name, schema,
+                 args.ifc_version)
 
 
 if __name__ == "__main__":

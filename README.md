@@ -1,8 +1,8 @@
 # BEGEES — Swedish geodata → IFC reference models
 
 Two self-contained Python pipelines that convert Swedish open/municipal geodata into
-**georeferenced IFC 4.3.2.0 reference models**, plus a small viewer for sanity-checking the
-result.
+**georeferenced IFC reference models** — IFC 4.3.2.0 by default, or IFC4 with
+`--ifc-version 4` — plus a small viewer for sanity-checking the result.
 
 The point of these models is context, not design: an architect loads one alongside their own
 model to see **what is legally buildable on a site** and what already exists around it, with the
@@ -11,8 +11,8 @@ a proprietary format.
 
 | Folder | Input | Output | Docs |
 |---|---|---|---|
-| [`Detaljplan2IFC/`](Detaljplan2IFC/) | Lantmäteriet detaljplan JSON (`vnd.lm.detaljplan.v4+json`) | CityJSON 1.0 → IFC4X3_ADD2 | [README](Detaljplan2IFC/README.md) |
-| [`GML2IFC/`](GML2IFC/) | CityGML 2.0 from 3DCityDB, Swedish 3CIM ADE | IFC4X3_ADD2 | [README](GML2IFC/README.md) |
+| [`Detaljplan2IFC/`](Detaljplan2IFC/) | Lantmäteriet detaljplan JSON (`vnd.lm.detaljplan.v4+json`) | CityJSON 1.0 → IFC4X3_ADD2 or IFC4 | [README](Detaljplan2IFC/README.md) |
+| [`GML2IFC/`](GML2IFC/) | CityGML 2.0 from 3DCityDB, Swedish 3CIM ADE | IFC4X3_ADD2 or IFC4 | [README](GML2IFC/README.md) |
 | `ifc_viewer.py` | any IFC files | 3D window | [below](#ifc_viewerpy) |
 
 Both pipelines write to the **same georeferencing convention**, so their outputs load together in
@@ -35,10 +35,14 @@ Run any of them with `--help` for the full option list.
 
 ## Why IFC, and why this way
 
-- **IFC 4.3.2.0 (`IFC4X3_ADD2`)**, not IFC4 — 4.3 is the first version with real infrastructure
-  classes (`IfcRoad`, `IfcPavement`, `IfcFacility`), which is what municipal street and
-  plan-boundary data actually needs. The entity attribute shapes these pipelines use are
-  unchanged between IFC4 and 4.3, so the upgrade was a schema-string change only.
+- **IFC 4.3.2.0 (`IFC4X3_ADD2`) by default, IFC4 on request.** 4.3 is the first version with
+  real infrastructure classes (`IfcRoad`, `IfcPavement`, `IfcFacility`), which is what municipal
+  street data actually needs. Some receiving tools and workflows still require IFC4, so both
+  converters take `--ifc-version {4.3,4}`. Everything else the pipelines write — georeferencing
+  (`IfcMapConversion`/`IfcProjectedCRS`), property sets, geometry — is identical in both. The only
+  difference is the classes IFC4 lacks: `schema.json` entries carry an `ifc_schema_overrides.IFC4`
+  block for those (in practice GML2IFC's roads, which become `IfcCivilElement` with `ObjectType`
+  `Road`/`Track`/`TrafficArea`), and every entry is checked against both schemas at load time.
 - **Direct export with `ifcopenshell`, not a converter wrapper.** The obvious candidate,
   [3DGI/cityjson2ifc](https://github.com/3DGI/cityjson2ifc), is a thin CLI with a hardcoded
   type table, no CRS/georeferencing support and no custom property sets. Post-processing its
@@ -85,6 +89,7 @@ municipalities, consumed by `GML2IFC/`:
 
 **IFC** — the output format:
 - [IFC 4.3.2.0 documentation](https://ifc43-docs.standards.buildingsmart.org/)
+- [IFC 4.0.2.1 (IFC4 ADD2 TC1) documentation](https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/HTML/)
 - [Georeferencing in IFC (buildingSMART)](https://www.buildingsmart.org/standards/bsi-standards/)
 
 **Coordinate reference systems** — SWEREF 99 TM and its 12 regional zones
