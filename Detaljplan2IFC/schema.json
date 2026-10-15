@@ -44,7 +44,8 @@
       "giltighetstid", "borjarGallaEfter", "reglerarDetaljplan"
     ],
 
-    "pset_name": "Pset_DetaljplanBestammelse",
+    "_pset_name_comment": "Must NOT start with 'Pset_' - buildingSMART reserves that prefix for its own standard property sets.",
+    "pset_name": "BEGEES_DetaljplanBestammelse",
 
     "properties": {
       "objektidentitet":                   { "name": "Objektidentitet",                   "type": "IfcIdentifier" },

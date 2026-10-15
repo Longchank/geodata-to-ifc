@@ -111,7 +111,8 @@ Builds the IFC directly with `ifcopenshell` and adds what a reference model need
   file georeferences correctly with no edits. `--false-origin E N [Z]` pins a specific point.
 - **`IfcSite.RefLatitude` / `RefLongitude`** — the human-readable approximate location, via
   `pyproj`.
-- **`Pset_DetaljplanBestammelse`** on every converted object, with typed Swedish plan attributes
+- **`BEGEES_DetaljplanBestammelse`** on every converted object (not `Pset_…`, a prefix
+  buildingSMART reserves for its standard property sets), with typed Swedish plan attributes
   (`Bestammelsevarde` as `IfcText`, `SekundarEgenskapsgrans` as `IfcBoolean`, and so on).
 - **Per-type display colour**, via `IfcStyledItem`/`IfcSurfaceStyle`, one shared style entity per
   distinct colour rather than one per object.

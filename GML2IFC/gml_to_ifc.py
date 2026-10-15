@@ -847,7 +847,7 @@ class GeometryBuilder:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Pset_CityGMLAttributes
+# BEGEES_CityGMLAttributes property set
 # ══════════════════════════════════════════════════════════════════════════════
 
 def attach_pset(f: ifcopenshell.file, owner_history, product, attributes: dict, schema: dict):

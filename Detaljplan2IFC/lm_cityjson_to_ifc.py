@@ -11,7 +11,7 @@ A direct exporter rather than a wrapper around the 3DGI/TU Delft cityjson2ifc
 CLI, which supports no custom CRS/georeferencing, no false origin and no custom
 property sets. This reuses that tool's type table but builds the IFC itself, so
 it can also write IfcProjectedCRS/IfcMapConversion, a false project origin and
-Pset_DetaljplanBestammelse.
+the BEGEES_DetaljplanBestammelse property set.
 
 IFC class, colour and Pset mapping are read from schema.json next to this
 script (--schema PATH overrides it) — the same file stage 1 reads.
@@ -65,7 +65,7 @@ DEFAULT_SCHEMA_PATH = Path(__file__).parent / "schema.json"
 
 def load_schema(path: Path) -> dict:
     """Loads schema.json — feature:typ -> IFC class/color mapping and the
-    Pset_DetaljplanBestammelse property map. Shared with
+    BEGEES_DetaljplanBestammelse property map. Shared with
     lm_detaljplan_to_cityjson.py (which reads the same file for CityJSON
     type/attribute mapping), so both scripts always agree on what each
     feature:typ means without editing code.
@@ -415,7 +415,7 @@ class GeometryBuilder:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Pset_DetaljplanBestammelse
+# BEGEES_DetaljplanBestammelse property set
 # ══════════════════════════════════════════════════════════════════════════════
 
 def attach_pset(f: ifcopenshell.file, owner_history, product, attributes: dict, schema: dict):
