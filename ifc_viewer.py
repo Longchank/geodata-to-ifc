@@ -153,6 +153,9 @@ class SceneLoader:
             always_visible=True)
         self.legend_entries.append((path.name, color))
         self._refresh_legend()
+        # Geometry sits at true map coords (~10^5–10^6 m); without this, a file
+        # added after the window opened stays off-camera near (0,0,0).
+        self.plotter.reset_camera()
         self.plotter.render()
 
     def add_files_via_dialog(self, _state=None):
