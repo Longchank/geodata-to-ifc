@@ -67,7 +67,8 @@ tag pair in the schema (`sectionOfRoad` vs `sectionOfTrack`); `TrafficArea` has 
 
 Common attributes (`gml:description`, `core:creationDate`, `core:externalReference`,
 `core:relativeToTerrain`, the `trecim:*` ADE fields, class/function/surfaceMaterial code
-values, …) are attached to every converted object as a **`Pset_CityGMLAttributes`** property set.
+values, …) are attached to every converted object as a **`BEGEES_CityGMLAttributes`** property set. (Not
+`Pset_…` — buildingSMART reserves that prefix for its own standard property sets.)
 
 The list of GML tags that get extracted is intentionally **hardcoded** in `gml_to_ifc.py`
 (`SIMPLE_ATTR_TAGS` / `CODE_ATTR_TAGS`) rather than living in `schema.json`, because it is tied

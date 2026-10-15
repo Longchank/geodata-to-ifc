@@ -33,7 +33,8 @@
   "facility_ifc_classes": ["IfcRoad", "IfcBridge", "IfcRailway", "IfcMarineFacility"],
 
   "attributes": {
-    "pset_name": "Pset_CityGMLAttributes",
+    "_pset_name_comment": "Must NOT start with 'Pset_' - buildingSMART reserves that prefix for its own standard property sets.",
+    "pset_name": "BEGEES_CityGMLAttributes",
 
     "default_type": "IfcText",
     "ext_prefix_type": "IfcIdentifier",
